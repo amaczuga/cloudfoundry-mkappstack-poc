@@ -1,0 +1,38 @@
+---
+  applications:
+    -
+      name: "cf-env-test01"
+      domain: "go.appstack.go"
+      memory: "512M"
+      services:
+        - "cf-env-svc02"
+      env: 
+        tapaas_srcurl: "https://my.artifact-store.org/cf-env/0.1-1/cf-env-0.1-1.zip"
+        tapaas_version: "0.1-1"
+        tapaas_svcname: "cf-env-svc01"
+        tapaas_svcparams: ""
+    -
+      name: "cf-env-test02"
+      services: 
+        - "cf-env-svc04"
+      env: 
+        tapaas_srcurl: "https://my.artifact-store.org/cf-env/0.2-1/cf-env-0.2-1.zip"
+        tapaas_version: "0.2-1"
+        tapaas_svcname: "cf-env-svc02"
+        tapaas_svcparams: ""
+    -
+      name: "cf-env-test03"
+      services: 
+        - "cf-env-svc02"
+      env: 
+        tapaas_srcurl: "https://my.artifact-store.org/cf-env/0.3-1/cf-env-0.3-1.zip"
+        tapaas_version: "0.3-1"
+        tapaas_svcname: "cf-env-svc03"
+        tapaas_svcparams: ""
+    - 
+      name: "cf-env-test04"
+      env: 
+        tapaas_srcurl: "https://my.artifact-store.org/cf-env/0.4-1/cf-env-0.4-1.zip"
+        tapaas_version: "0.4-1"
+        tapaas_svcname: "cf-env-svc04"
+        tapaas_svcparams: '{"tornado":"http://hurricane.andrew.stage.five/"}'

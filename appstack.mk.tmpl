@@ -1,0 +1,14 @@
+# cfbin* variables related to provision CF CLI binary
+cfbinrel = linux64-binary
+cfbinver = latest
+cfbinurl = https://cli.run.pivotal.io/stable
+cfbindir = cfdir
+
+# appstack provision variables, determining runtime parameters
+stackyml = appstack.yml
+stackpfx = my-demo-stack
+yml_appseq = ["applications"]
+appdir = apps
+srcdir = src
+proxy = http://my.http-proxy.org:8080/
+noproxy = 127.0.0.1,localhost,localhost.localdomain,mydomain.org
