@@ -100,7 +100,9 @@ $(appdir)/%/.svc: $(appdir)/%/.app
 		$(eval remoteurl:=$(shell $(cfcall) app $(subst $(appdir)/,,$(@D)) |awk '/^urls:\ /{gsub(",","");print $$2}'))
 		$(eval boundapps:=$(shell $(call r_ymllistdo,$(stackyml),$(yml_appseq),if app["services"]; if app["services"].include?("$(svcname)"); print app["name"]+" " end end )))
 		$(shmute)if [ "$(locsvcparams)" ]; then svcparams='$(locsvcparams)'; else svcparams='{"host":"http://$(remoteurl)/"}'; fi; \
-                if [ "`$(call s_unquote) $$svcparams`" != "`$(call s_unquote) '$(remoteparams)'`" ]; then $(cfcall) set-env $(subst $(appdir)/,,$(@D)) $(stackpfx)svcparams \'$${svcparams}\' $(nulout); fi; \
+                if [ "`$(call s_unquote) $$svcparams`" != "`$(call s_unquote) '$(remoteparams)'`" ]; then \
+                  $(cfcall) set-env $(subst $(appdir)/,,$(@D)) $(stackpfx)svcparams \'$${svcparams}\' $(nulout); \
+                fi; \
                 if [ "`$(cfcall) services | grep '^$(svcname)\ '`" ]; then \
                   echo "$(call i_svcupdt,$(svcname))"; \
                   $(cfcall) uups $(svcname) -p $${svcparams} $(nulout); \
