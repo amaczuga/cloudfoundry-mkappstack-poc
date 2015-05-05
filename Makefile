@@ -38,8 +38,8 @@ endif
 r_ymllistdo = $(ruby) 'YAML.load(File.open("$(1)"))$(2).each { |app| $(3) }'
 r_appgetattr = $(ruby) 'puts YAML.load(File.open("$(1)"))$(2).uniq.find { |app| $(3) }$(4)'
 r_mergeymls = 'myapp=YAML.load(File.open("$(1)")); \
-              ovrd=YAML.load(File.open("$(2)"))["applications"].uniq.find { |app| app["name"]=="$(3)" }; \
-              myapp["applications"]=[myapp["applications"][0].merge(ovrd)]; \
+              ovrd=YAML.load(File.open("$(2)"))$(yml_appseq).uniq.find { |app| app["name"]=="$(3)" }; \
+              myapp$(yml_appseq)=[myapp$(yml_appseq)[0].merge(ovrd)]; \
               puts YAML.dump(myapp)'
 s_unquote = sed -e 's/"\|'\''//g' <<<
 i_dircrte = [$(stackpfx)] ----->[dir] create: $(1) 
