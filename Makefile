@@ -3,7 +3,7 @@ include *.mk
 # defaults for external programs and others
 SHELL = /bin/bash
 ruby = ruby -ryaml -e
-curl = curl -s -k -L -x $(proxy) --noproxy $(noproxy)
+curlcmd = curl -s -k -L
 unzip = unzip -q -DD
 appmfst = cfdepl.yml
 
@@ -23,8 +23,10 @@ ifeq (, $(shell which ruby))
 endif
 ifeq (,$(proxy))
   cfcall = $(cfcmd)
+  curl = $(curlcmd)
 else
   cfcall = env HTTP_PROXY=$(proxy) $(cfcmd)
+  curl = $(curlcmd) -x $(proxy) --noproxy $(noproxy)
 endif
 ifeq ($(cfbinver),latest)
   cfarcurl = "$(cfbinurl)?release=$(cfbinrel)"
