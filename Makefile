@@ -140,10 +140,10 @@ $(appdir)/%/.svcchanged: | cfset
 		$(eval remsvcparams:=$(shell $(cfcall) env $(subst $(appdir)/,,$(@D)) |awk '/^$(stackpfx)svcparams:\ /{print $$2}'))
 		$(eval remoteurl:=$(shell $(cfcall) app $(subst $(appdir)/,,$(@D)) |awk '/^urls:\ /{gsub(",","");print $$2}'))
 		$(shmute)if [ "$(locsvcparams)" != "nil" ]; then svcparams='$(locsvcparams)'; else svcparams='{"host":"http://$(remoteurl)/"}'; fi; \
-                $(shmute)if [ "`$(call s_unquote) $$svcparams`" != "`$(call s_unquote) '$(remsvcparams)'`" ]; then \
-                  $(cfcall) set-env $(subst $(appdir)/,,$(@D)) $(stackpfx)svcparams $${svcparams} $(nulout); \
-                  touch $@; \
-                fi
+                  if [ "`$(call s_unquote) $$svcparams`" != "`$(call s_unquote) '$(remsvcparams)'`" ]; then \
+                    $(cfcall) set-env $(subst $(appdir)/,,$(@D)) $(stackpfx)svcparams $${svcparams} $(nulout); \
+                    touch $@; \
+                  fi
 
 $(appdir)/%/.app:
 		$(shmute)if [ -f $| ]; then echo "$(call i_apppush,$(subst $(appdir)/,,$(@D)))"; fi
