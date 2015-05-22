@@ -103,8 +103,6 @@ deploy: $(DPLAPPS)
 discover: | cfset
 		$(eval spaceid:=$(shell $(cfcall) space --guid $(cfspace)))
 		$(shmute)$(cfcall) curl /v2/spaces/$(spaceid)/summary |$(call r_cfdscover) >$@.yml
-# uwaga, YAML.load akceptuje rowniez jsona!
-#		$(shmute)$(call r_json2yaml,$@.json) >$@.yml
 
 cfset: $(cfcmd)
 		$(shmute)if ! $(cfcall) target -o $(cforg) -s $(cfspace) $(nulout); then \
