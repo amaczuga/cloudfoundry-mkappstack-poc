@@ -3,7 +3,7 @@ include *.mk
 # defaults for external programs and others
 comma:=,
 SHELL = /bin/bash
-ruby = ruby -ryaml -e
+ruby = ruby -ryaml -rjson -e
 curlcmd = curl -s -k -L
 unzip = unzip -q -DD
 appmfst = cfdepl.yml
@@ -19,8 +19,14 @@ else
   shmute = @
   nulout = >/dev/null 2>&1
 endif
-ifeq (, $(shell which ruby))
+ifeq (,$(shell which ruby))
   $(error "No ruby in $(PATH), consider doing apt-get install ruby")
+endif
+ifneq (,$(shell ruby -e 'begin require "yaml"; rescue LoadError => e; puts e; end'))
+  $(error "No ruby YAML module available, consider installing one")
+endif
+ifneq (,$(shell ruby -e 'begin require "json"; rescue LoadError => e; puts e; end'))
+  $(error "No ruby JSON module available, consider installing one")
 endif
 ifeq (,$(proxy))
   cfcall = $(cfcmd)
@@ -46,6 +52,8 @@ r_appgetdeps = $(ruby) 'myaml=YAML.load(File.open("$(1)"))["$(2)"]; \
 r_mergeymls = $(ruby) '$(r_rmerge) puts YAML.dump(Hash["$(3)",[YAML.load(File.open("$(1)"))["$(3)"][0].rmerge(YAML.load(File.open("$(2)"))["$(3)"][0])]])'
 r_attrcryml = $(ruby) 'puts YAML.dump(Hash["$(1)",[Hash[$(2)]]])'
 r_ymlappxtc = $(ruby) 'puts YAML.dump(Hash["$(2)",[YAML.load(File.open("$(1)"))["$(2)"].find { |app| $(3) }]])'
+r_json2yaml = $(ruby) 'puts YAML.dump(JSON.parse(File.open("$(1)").read))'
+r_cfdscover = $(ruby) 'puts YAML.dump(Hash["applications",YAML::load(STDIN.read)["apps"].map{|app| {"name"=>app["name"],"instances"=>app["instances"],"memory"=>app["memory"].to_s+"M","services"=>app["service_names"],"domains"=>app["routes"].map{|route| route["domain"]["name"]},"env"=>app["environment_json"]}}])'
               
 s_unquote = sed -e 's/"\|'\''//g' <<<
 i_dircrte = [$(stackpfx)] ----->[dir] create: $(1) 
@@ -73,7 +81,7 @@ DELSVCS := $(shell $(call r_ymllistdo,$(stackyml),$(yml_appseq),if app["env"].ha
 
 all: deploy
 
-MAKEFILE_TARGETS_WITHOUT_INCLUDE := wipeall clean cfclean deleteapps deletesvcs
+MAKEFILE_TARGETS_WITHOUT_INCLUDE := wipeall clean cfclean deleteapps deletesvcs cfset discover
 ifeq ($(filter $(MAKECMDGOALS),$(MAKEFILE_TARGETS_WITHOUT_INCLUDE)),)
   -include $(DPLAPPS:$(appdir)/%/.app=$(appdir)/%/.appdeps)
 endif
@@ -91,6 +99,10 @@ deletesvcs: cfset $(DELSVCS)
 
 deploy: $(DPLAPPS)
 		$(shmute)rm -f $(appdir)/*/.svc  $(appdir)/*/.app
+
+discover: | cfset
+		$(eval spaceid:=$(shell $(cfcall) space --guid $(cfspace)))
+		$(shmute)$(cfcall) curl /v2/spaces/$(spaceid)/summary |$(call r_cfdscover) >$@.yml
 
 cfset: $(cfcmd)
 		$(shmute)if ! $(cfcall) target -o $(cforg) -s $(cfspace) $(nulout); then \
