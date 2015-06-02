@@ -2,23 +2,30 @@ include *.mk
 
 # defaults for external programs and others
 comma:=,
-SHELL = /bin/bash
+SHELL = /bin/bash -e
 ruby = ruby -ryaml -rjson -e
 curlcmd = curl -s -k -L
-unzip = unzip -q -DD
+unzip = unzip -q -o -DD
 appmfst = cfdepl.yml
 
 cfarchive = $(cfbindir)/cfbin-$(cfbinrel)-$(cfbinver).tar.gz
 cfbinary = $(cfbindir)/cf-$(cfbinrel)-$(cfbinver)
 cfcmd = $(cfbindir)/cf
 
-ifdef TRACE
-  shmute =
-  nulout =
-else
-  shmute = @
-  nulout = >/dev/null 2>&1
+shmute := @
+nulout := >/dev/null 2>&1
+ifeq ($(TRACE),true)
+  shmute :=
+  nulout :=
 endif
+ifeq ($(TRACE),log)
+  nulout := | tee $(stackpfx).log >/dev/null 2>&1
+endif
+ifeq ($(TRACE),debug)
+  shmute :=
+  nulout :=
+endif
+
 ifeq (,$(shell which ruby))
   $(error "No ruby in $(PATH), consider doing apt-get install ruby")
 endif
@@ -47,7 +54,7 @@ r_ymllistdo = $(ruby) 'YAML.load(File.open("$(1)"))["$(2)"].each { |app| $(3) }'
 r_appgetattr = $(ruby) 'puts YAML.load(File.open("$(1)"))["$(2)"].uniq.find { |app| $(3) }$(4)'
 r_appgetdeps = $(ruby) 'myaml=YAML.load(File.open("$(1)"))["$(2)"]; \
                myaml.each { |app| if app["name"]=="$(3)" and app.has_key?("services"); \
-               app["services"].each { |svc| print "$(appdir)/"+myaml.uniq.find { |svcapp| svcapp["env"]["$(stackpfx)svcname"]==svc }["name"]+"/.svc " }; \
+               app["services"].each { |svc| if myaml.any? { |svcapp| svcapp["env"]["$(stackpfx)svcname"]==svc }; print "$(appdir)/"+myaml.uniq.find { |svcapp| svcapp["env"]["$(stackpfx)svcname"]==svc }["name"]+"/.svc "; end }; \
                end }'
 r_mergeymls = $(ruby) '$(r_rmerge) puts YAML.dump(Hash["$(3)",[YAML.load(File.open("$(1)"))["$(3)"][0].rmerge(YAML.load(File.open("$(2)"))["$(3)"][0])]])'
 r_attrcryml = $(ruby) 'puts YAML.dump(Hash["$(1)",[Hash[$(2)]]])'
@@ -72,7 +79,7 @@ i_svccrte = [$(stackpfx)] -»-»-»[svc] create user-provided-service: $(1)
 i_svcupdt = [$(stackpfx)] --»«--[svc] update user-provided-service: $(1)
 i_svcdele = [$(stackpfx)] xxxxxx[svc] delete: $(1)
 
-.PRECIOUS: %/.dir $(srcdir)/%.zip $(appdir)/%/manifest.yml $(appdir)/%/$(appmfst)
+.PRECIOUS: %/.dir $(srcdir)/%.zip $(appdir)/%/manifest.yml $(appdir)/%/$(appmfst) $(appdir)/%/.appchanged $(appdir)/%/.svcchanged
 
 APPS := $(shell $(call r_ymllistdo,$(stackyml),$(yml_appseq),print app["name"]+" " ))
 DPLAPPS := $(foreach dplapp,$(APPS),$(appdir)/$(dplapp)/.app)
@@ -81,7 +88,7 @@ DELSVCS := $(shell $(call r_ymllistdo,$(stackyml),$(yml_appseq),if app["env"].ha
 
 all: deploy
 
-MAKEFILE_TARGETS_WITHOUT_INCLUDE := wipeall clean cfclean deleteapps deletesvcs cfset discover
+MAKEFILE_TARGETS_WITHOUT_INCLUDE := wipeall clean cfclean deleteapps deletesvcs cfset discover $(appdir)/%/$(appmfst)
 ifeq ($(filter $(MAKECMDGOALS),$(MAKEFILE_TARGETS_WITHOUT_INCLUDE)),)
   -include $(DPLAPPS:$(appdir)/%/.app=$(appdir)/%/.appdeps)
 endif
@@ -125,12 +132,12 @@ $(appdir)/%/.appdel:
 
 $(appdir)/%/.svc: $(appdir)/%/.app | $(appdir)/%/.svcchanged
 		$(eval svcname:=$(shell $(call r_appgetattr,$(@D)/$(appmfst),$(yml_appseq),app["name"]=="$(subst $(appdir)/,,$(@D))",["env"]["$(stackpfx)svcname"])))
-		$(eval svcparams:=$(shell $(cfcall) env $(subst $(appdir)/,,$(@D)) |awk '/^$(stackpfx)svcparams:\ /{print $$2}'))
+		$(eval svcparams:=$(shell $(cfcall) env $(subst $(appdir)/,,$(@D)) |awk '/^$(stackpfx)svcparams:\ /{gsub("^$(stackpfx)svcparams: ","");print $$0}'))
 		$(eval boundapps:=$(shell $(call r_ymllistdo,$(stackyml),$(yml_appseq),if app["services"]; if app["services"].include?("$(svcname)"); print app["name"]+" " end end )))
 		$(shmute)if [ "`$(cfcall) services | grep '^$(svcname)\ '`" ]; then \
                   if [ -f $| ]; then \
                     echo "$(call i_svcupdt,$(svcname))"; \
-                    $(cfcall) uups $(svcname) -p '$(svcparams)' $(nulout); \
+                    $(cfcall) uups $(svcname) -p $(svcparams) $(nulout); \
                     for boundapp in $(boundapps); do \
                       if [ "`$(cfcall) apps | grep "^$${boundapp}\ "`" ]; then \
                         echo "$(call i_apprstg) $${boundapp}"; \
@@ -142,7 +149,7 @@ $(appdir)/%/.svc: $(appdir)/%/.app | $(appdir)/%/.svcchanged
                   fi \
                 else \
                     echo "$(call i_svccrte,$(svcname))"; \
-                    $(cfcall) cups $(svcname) -p '$(svcparams)' $(nulout); \
+                    $(cfcall) cups $(svcname) -p $(svcparams) $(nulout); \
                 fi
 		$(shmute)rm -f $|
 		$(shmute)touch $@
@@ -151,15 +158,16 @@ $(appdir)/%/.svcchanged: | cfset
 		$(eval locsvcparams:=$(shell $(call r_appgetattr,$(@D)/$(appmfst),$(yml_appseq),app["name"]=="$(subst $(appdir)/,,$(@D))",["env"]["$(stackpfx)svcparams"])))
 		$(eval remsvcparams:=$(shell $(cfcall) env $(subst $(appdir)/,,$(@D)) |awk '/^$(stackpfx)svcparams:\ /{print $$2}'))
 		$(eval remoteurl:=$(shell $(cfcall) app $(subst $(appdir)/,,$(@D)) |awk '/^urls:\ /{gsub(",","");print $$2}'))
-		$(shmute)if [ "$(locsvcparams)" != "nil" ]; then svcparams='$(locsvcparams)'; else svcparams='{"host":"http://$(remoteurl)/"}'; fi; \
-                  if [ "`$(call s_unquote) $$svcparams`" != "`$(call s_unquote) '$(remsvcparams)'`" ]; then \
-                    $(cfcall) set-env $(subst $(appdir)/,,$(@D)) $(stackpfx)svcparams $${svcparams} $(nulout); \
+		$(shmute)if [ "$(locsvcparams)" != "" ]; then svcparams=\''$(locsvcparams)'\'; else svcparams=\''{"host":"http://$(remoteurl)/"}'\'; fi; \
+                  if [ "`$(call s_unquote) "$${svcparams}"`" != "`$(call s_unquote) '$(remsvcparams)'`" ]; then \
+                    $(cfcall) set-env $(subst $(appdir)/,,$(@D)) $(stackpfx)svcparams "$${svcparams}" $(nulout); \
                     touch $@; \
                   fi
 
 $(appdir)/%/.app:
+		$(eval apppath:=$(shell $(call r_appgetattr,$(@D)/$(appmfst),$(yml_appseq),app["name"]=="$(subst $(appdir)/,,$(@D))",["path"])))
 		$(shmute)if [ -f $| ]; then echo "$(call i_apppush,$(subst $(appdir)/,,$(@D)))"; fi
-		$(shmute)if [ -f $| ]; then $(cfcall) push -p $(@D) -f $(@D)/$(appmfst) $(nulout); fi
+		$(shmute)if [ -f $| ]; then $(cfcall) push -p $(@D)/$(apppath) -f $(@D)/$(appmfst) $(nulout); fi
 		$(shmute)rm -f $|
 		$(shmute)touch $@
 
@@ -175,7 +183,7 @@ $(appdir)/%/.appchanged: $(appdir)/%/.domain | cfset
 		$(eval localdom:=$(shell cat $(@D)/.localdomain))
 		$(shmute)if [ '$(localver)' != '$(remotever)' ]; then touch $@; fi
 		$(shmute)if [ '$(localmem)' != '$(remotemem)' ]; then touch $@; fi
-		$(shmute)if [ "$(localdom)" != "nil" -a $$($(cfcall) app $(subst $(appdir)/,,$(@D)) | grep -c $(localdom)) -eq 0 ]; then touch $@; fi
+		$(shmute)if [ "$(localdom)" != "" ]; then if [ $$($(cfcall) app $(subst $(appdir)/,,$(@D)) | grep -c $(localdom)) -eq 0 ]; then touch $@; fi; fi
 		$(shmute)rm -f $(@D)/.domain $(@D)/.localdomain
 
 $(appdir)/%/.localdomain: $(appdir)/%/$(appmfst)
@@ -184,9 +192,9 @@ $(appdir)/%/.localdomain: $(appdir)/%/$(appmfst)
 $(appdir)/%/.domain: $(appdir)/%/.localdomain | cfset
 		$(eval localdom:=$(shell cat $<))
 		$(shmute)$(cfcall) domains | awk '{if (NR>2) print $$1}' >$@
-		$(shmute)if [ "$(localdom)" != "nil" -a $$(grep -c $(localdom) $@) -eq 0 ]; then \
+		$(shmute)if [ "$(localdom)" != "" ]; then if [ $$(grep -c $(localdom) $@) -eq 0 ]; then \
                   echo "$(call i_domcrte,$(localdom))"; $(cfcall) create-shared-domain $(localdom) $(nulout); \
-                fi
+                fi; fi
 
 $(appdir)/%/$(appmfst): $(appdir)/%/manifest.yml $(stackyml)
 		$(info $(call i_appcrmf,$(subst $(appdir)/,,$(@D))))
@@ -195,6 +203,7 @@ $(appdir)/%/$(appmfst): $(appdir)/%/manifest.yml $(stackyml)
 
 $(appdir)/%/manifest.yml: $(appdir)/%/.dir | $(srcdir)/%.zip
 		$(info $(call i_appunzp,$(subst $(appdir)/,,$(@D))))
+		$(shmute)$(ruby) 'puts YAML.dump({"$(yml_appseq)" => [{}]})' >$@
 		$(shmute)$(unzip) -d $(@D) $|
 
 $(srcdir)/%.zip: $(srcdir)/.dir
